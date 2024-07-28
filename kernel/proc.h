@@ -19,8 +19,11 @@ struct context {
 };
 
 // Per-CPU state.
+// CPU结构体
 struct cpu {
+  // 运行在该CPU上的进程
   struct proc *proc;          // The process running on this cpu, or null.
+  // 上下文信息
   struct context context;     // swtch() here to enter scheduler().
   int noff;                   // Depth of push_off() nesting.
   int intena;                 // Were interrupts enabled before push_off()?
@@ -82,26 +85,39 @@ struct trapframe {
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
+// 进程结构体
 struct proc {
+  // 自旋锁,保护proc结构体中共享资源的访问
   struct spinlock lock;
 
   // p->lock must be held when using these:
+  // 状态
   enum procstate state;        // Process state
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
+  // 进程退出状态,终止时返回给父进程的等待函数
   int xstate;                  // Exit status to be returned to parent's wait
+  // 进程ID
   int pid;                     // Process ID
 
   // wait_lock must be held when using this:
+  // 父进程
   struct proc *parent;         // Parent process
 
   // these are private to the process, so p->lock need not be held.
+  // 进程内核栈的虚拟地址
   uint64 kstack;               // Virtual address of kernel stack
+  // 进程的内存大小,字节为单位
   uint64 sz;                   // Size of process memory (bytes)
+  // 用户空间的页表,用于虚拟内存管理
   pagetable_t pagetable;       // User page table
   struct trapframe *trapframe; // data page for trampoline.S
+  // 进程上下文
   struct context context;      // swtch() here to run process
+  // 打开的文件数组
   struct file *ofile[NOFILE];  // Open files
+  // 当前工作的目录
   struct inode *cwd;           // Current directory
+  // 进程名称
   char name[16];               // Process name (debugging)
 };

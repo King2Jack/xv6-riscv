@@ -8,6 +8,7 @@
 
 /*
  * the kernel's page table.
+ * 内核页表
  */
 pagetable_t kernel_pagetable;
 
@@ -21,6 +22,7 @@ kvmmake(void)
 {
   pagetable_t kpgtbl;
 
+  // 获取一个页表
   kpgtbl = (pagetable_t) kalloc();
   memset(kpgtbl, 0, PGSIZE);
 
@@ -58,12 +60,15 @@ kvminit(void)
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
+// 切换硬件页表寄存器到内核的页表,并且启用分页
 void
 kvminithart()
 {
   // wait for any previous writes to the page table memory to finish.
+  // 等待之前对页表内存的写入完成
   sfence_vma();
 
+  // 开启分页机制
   w_satp(MAKE_SATP(kernel_pagetable));
 
   // flush stale entries from the TLB.
@@ -82,6 +87,7 @@ kvminithart()
 //   21..29 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
+// 通过上面可以看出是3级页表,并且只用了前面39位
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {

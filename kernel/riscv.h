@@ -10,13 +10,24 @@ r_mhartid()
 }
 
 // Machine Status Register, mstatus
-
+/*
+ * MSTATUS_MPP_MASK：这是一个掩码，用于获取或设置mstatus寄存器中的MPP（Machine Previous Privilege）字段。MPP字段用于存储在进入机器模式前的权限模式。
+ * MSTATUS_MPP_M：这个值表示MPP字段被设置为机器模式（Machine mode）。
+ * MSTATUS_MPP_S：这个值表示MPP字段被设置为监督模式（Supervisor mode）。
+ * MSTATUS_MPP_U：这个值表示MPP字段被设置为用户模式（User mode）。
+ * MSTATUS_MIE：这是一个掩码，用于获取或设置mstatus寄存器中的MIE（Machine Interrupt Enable）位。如果MIE位被设置，那么机器模式下的中断就会被启用
+ */
 #define MSTATUS_MPP_MASK (3L << 11) // previous mode.
 #define MSTATUS_MPP_M (3L << 11)
 #define MSTATUS_MPP_S (1L << 11)
 #define MSTATUS_MPP_U (0L << 11)
 #define MSTATUS_MIE (1L << 3)    // machine-mode interrupt enable.
 
+/*
+ * 读取 mstatus 寄存器
+ * csrr是RISC-V的一条指令，用于读取CSR寄存器的值
+ * 。%0是一个占位符，表示输出操作数列表中的第一个元素，即x。"=r" (x)表示将x作为一个可写的寄存器操作数，=表示这是一个输出操作数，r表示任何通用寄存器。
+ */
 static inline uint64
 r_mstatus()
 {
@@ -34,6 +45,8 @@ w_mstatus(uint64 x)
 // machine exception program counter, holds the
 // instruction address to which a return from
 // exception will go.
+// 设置处理器从异常返回时的目标地址
+// mepc寄存器對於RISC-V系統中正確處理異常和中斷至關重要，確保系統在處理異常情況後能夠恢復並繼續運作。
 static inline void 
 w_mepc(uint64 x)
 {
@@ -203,6 +216,8 @@ w_pmpaddr0(uint64 x)
 
 // supervisor address translation and protection;
 // holds the address of the page table.
+// 在RISC-V中,satp寄存器的作用是控制地址转换和保护机制
+// 当设置为0的时候,表示禁用分页机制,即不进行虚拟地址到物理地址的转换,这通常在操作系统的初始化阶段使用
 static inline void 
 w_satp(uint64 x)
 {

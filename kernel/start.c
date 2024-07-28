@@ -21,36 +21,44 @@ void
 start()
 {
   // set M Previous Privilege mode to Supervisor, for mret.
+  // 设置 mstatus 寄存器的 MPP 位为 MSTATUS_MPP_S,表示下一次从中断返回时,返回到 supervisor 模式
   unsigned long x = r_mstatus();
   x &= ~MSTATUS_MPP_MASK;
   x |= MSTATUS_MPP_S;
   w_mstatus(x);
 
   // set M Exception Program Counter to main, for mret.
+  // 设置 mepc 寄存器为 main 函数的地址,以便从中断返回时跳转到main函数执行
   // requires gcc -mcmodel=medany
   w_mepc((uint64)main);
 
   // disable paging for now.
+  // 禁止分页机制,也就是禁止地址转换
   w_satp(0);
 
   // delegate all interrupts and exceptions to supervisor mode.
+  // 将所有中断和异常委托给管理模式
   w_medeleg(0xffff);
   w_mideleg(0xffff);
   w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
 
   // configure Physical Memory Protection to give supervisor mode
   // access to all of physical memory.
+  // 配置物理内存保护,将所有物理内存的访问权限委托给管理模式,即管理模式可以访问所有物理内存
   w_pmpaddr0(0x3fffffffffffffull);
   w_pmpcfg0(0xf);
 
   // ask for clock interrupts.
+  // 初始化计时器,以获取时钟中断
   timerinit();
 
   // keep each CPU's hartid in its tp register, for cpuid().
+  // 将每个CPU的hartid存储在tp寄存器中,以便cpuid()函数使用
   int id = r_mhartid();
   w_tp(id);
 
   // switch to supervisor mode and jump to main().
+  // 切换到管理模式,并且跳转到main函数
   asm volatile("mret");
 }
 

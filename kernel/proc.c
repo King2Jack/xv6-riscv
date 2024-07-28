@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 
+// CPU数量
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -106,11 +107,17 @@ allocpid()
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
+/**
+ * 该函数的作用是找一个没有使用过的进程,找到的话,就初始化需要在内核运行的所有状态,返回该进程的指针,并且持有锁
+ * 如果找不到空闲进程,或者内存分配失败,z则返回0
+ * @return
+ */
 static struct proc*
 allocproc(void)
 {
   struct proc *p;
 
+  // 遍历进程表中的每个进程, 找到一个UNUSED的进程
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == UNUSED) {
@@ -119,23 +126,33 @@ allocproc(void)
       release(&p->lock);
     }
   }
+  // 找不到返回0
   return 0;
 
+// 找到了就来到found这
 found:
+  // 申请一个pid
   p->pid = allocpid();
+  // 状态改为used
   p->state = USED;
 
   // Allocate a trapframe page.
+  // 申请一个trapframe页
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+    // 释放proc
     freeproc(p);
+    // 释放锁
     release(&p->lock);
     return 0;
   }
 
   // An empty user page table.
+  // 申请进程的页表
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
+    // 释放proc
     freeproc(p);
+    // 释放锁
     release(&p->lock);
     return 0;
   }
@@ -152,13 +169,19 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+/**
+ * 释放进程结构体和相关数据,包括用户页面,必须要持有锁
+ * @param p
+ */
 static void
 freeproc(struct proc *p)
 {
+  // 释放trapframe
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
   if(p->pagetable)
+      // 释放进程页表
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
   p->sz = 0;
@@ -234,6 +257,7 @@ userinit(void)
 {
   struct proc *p;
 
+  // 申请分配一个进程
   p = allocproc();
   initproc = p;
   

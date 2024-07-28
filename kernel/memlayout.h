@@ -49,6 +49,14 @@
 
 // map the trampoline page to the highest address,
 // in both user and kernel space.
+/**
+ * Trampoline 是一个特殊的页面，它包含了一个跳板函数（通常是uservec），用于在用户态代码和内核态代码之间进行切换。
+ * 当一个进程在用户态执行时遇到一个系统调用或异常（如除零错误、页错误等），CPU会自动保存当前的上下文到trapframe，
+ * 然后跳转到trampoline页面中预先设定的地址继续执行。trampoline页面中的代码负责从用户态切换到内核态，处理完系统调用或异常后，
+ * 再从内核态安全地回到用户态。
+ * Trampoline页面在每个进程的虚拟地址空间中都存在，通常映射到虚拟地址空间的最高地址处。
+ * 它没有PTE_U标志，这意味着它只能在内核态访问，不能在用户态直接执行。
+ */
 #define TRAMPOLINE (MAXVA - PGSIZE)
 
 // map kernel stacks beneath the trampoline,
@@ -64,4 +72,16 @@
 //   ...
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
+/**
+ * Trapframe 是一个结构体，用于保存发生系统调用或异常时的CPU寄存器状态和上下文信息。当一个系统调用或异常发生时，
+ * CPU会自动保存当前的寄存器状态到trapframe中，以便在异常处理完成后能够恢复到发生异常前的执行状态。
+ * 在xv6中，trapframe通常被分配在每个进程的虚拟地址空间的顶部，紧邻trampoline页面之下。当一个进程被创建时，
+ * xv6会为该进程分配一个trapframe页面，并将其映射到固定的虚拟地址（如TRAPFRAME），这样无论哪个进程发生异常，
+ * 都可以使用相同的虚拟地址访问其trapframe。
+ * Trapframe的结构体通常包含以下信息：
+ * CPU寄存器的值（如eax, ebx, ecx, edx, esp, ebp, eip等，对于RISC-V架构则对应于x1至x31和pc等寄存器）。
+ * 状态标志（如eflags，对于RISC-V则是status和cause寄存器）。
+ * 在处理完系统调用或异常后，内核会从trapframe中恢复CPU寄存器的值，使得进程能够从引发异常的指令处继续执行。
+ * 总的来说，trampoline和trapframe共同协作，使得xv6能够在用户态和内核态之间安全、高效地切换执行上下文。
+ */
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)

@@ -23,10 +23,14 @@ struct {
   struct run *freelist;
 } kmem;
 
+/**
+ * 初始化内核内存管理的数据结构,设置可用内存范围
+ */
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  // 将从end到PHYSTOP的内存作为可用内存,这个函数会将这些内存页添加到可用内存列表中
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -48,6 +52,7 @@ kfree(void *pa)
 {
   struct run *r;
 
+  // 校验传进来的地址范围是否合法
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
@@ -56,6 +61,7 @@ kfree(void *pa)
 
   r = (struct run*)pa;
 
+  // 释放内存需要加锁
   acquire(&kmem.lock);
   r->next = kmem.freelist;
   kmem.freelist = r;
