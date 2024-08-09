@@ -53,9 +53,11 @@ void
 uartinit(void)
 {
   // disable interrupts.
+  // 禁用UART相关所有中断
   WriteReg(IER, 0x00);
 
   // special mode to set baud rate.
+  // 将线路控制寄存器 (LCR) 设置到波特率寄存器可访问模式。
   WriteReg(LCR, LCR_BAUD_LATCH);
 
   // LSB for baud rate of 38.4K.
@@ -66,14 +68,18 @@ uartinit(void)
 
   // leave set-baud mode,
   // and set word length to 8 bits, no parity.
+  // 将 LCR 寄存器设置为8位数据长度，并禁用奇偶校验，这表示每个数据帧将包含8位数据，无奇偶校验位
   WriteReg(LCR, LCR_EIGHT_BITS);
 
   // reset and enable FIFOs.
+  // 初始化FIFO（First In First Out）缓冲区，使其处于启用状态并清除其内容。
   WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR);
 
   // enable transmit and receive interrupts.
+  // 开启UART的发送和接收中断，以便处理数据的发送和接收。
   WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
 
+  // 初始化一个互斥锁，通常用于同步多个线程或进程在发送数据时对UART的访问，避免冲突。
   initlock(&uart_tx_lock, "uart");
 }
 
@@ -87,19 +93,25 @@ void
 uartputc(int c)
 {
   acquire(&uart_tx_lock);
-
   if(panicked){
     for(;;)
       ;
   }
+  // 判断缓冲区是否已满,也就是写指针=读指针+缓冲区大小
   while(uart_tx_w == uart_tx_r + UART_TX_BUF_SIZE){
     // buffer is full.
     // wait for uartstart() to open up space in the buffer.
+    // 函数将调用`sleep(&uart_tx_r, &uart_tx_lock)`使当前进程进入睡眠状态，
+    // 等待其他进程通过`uartstart()`函数发送数据并更新`uart_tx_r`，从而腾出缓冲区空间
     sleep(&uart_tx_r, &uart_tx_lock);
   }
+  // 写入字符
   uart_tx_buf[uart_tx_w % UART_TX_BUF_SIZE] = c;
+  // 更新写指针
   uart_tx_w += 1;
+  // 启动发送,调用uartstart()函数,通知硬件开始发送缓冲区中的数据
   uartstart();
+  // 释放锁
   release(&uart_tx_lock);
 }
 
@@ -111,8 +123,9 @@ uartputc(int c)
 void
 uartputc_sync(int c)
 {
+  // 关闭中断
   push_off();
-
+  // 判断进程是否崩溃
   if(panicked){
     for(;;)
       ;
@@ -122,7 +135,7 @@ uartputc_sync(int c)
   while((ReadReg(LSR) & LSR_TX_IDLE) == 0)
     ;
   WriteReg(THR, c);
-
+  // 恢复中断
   pop_off();
 }
 
@@ -134,24 +147,33 @@ void
 uartstart()
 {
   while(1){
+    // 检查uart发送缓冲区是否为空
     if(uart_tx_w == uart_tx_r){
       // transmit buffer is empty.
       return;
     }
-    
+    /*
+     * 读取LSR寄存器,检查LSR_TX_IDLE标志位
+     * 如果LSR_TX_IDLE标志位为0,则表示UART的传输寄存器已满,不能再写入数据
+     */
     if((ReadReg(LSR) & LSR_TX_IDLE) == 0){
       // the UART transmit holding register is full,
       // so we cannot give it another byte.
       // it will interrupt when it's ready for a new byte.
       return;
     }
-    
+
+    /*
+     * 从发送缓冲区当中读取数据
+     * 并且更新发送缓冲区的读指针
+     */
     int c = uart_tx_buf[uart_tx_r % UART_TX_BUF_SIZE];
     uart_tx_r += 1;
     
     // maybe uartputc() is waiting for space in the buffer.
+    // 唤醒可能在等待发送缓冲区空间的进程
     wakeup(&uart_tx_r);
-    
+    // 将字符写入UART的传输寄存器
     WriteReg(THR, c);
   }
 }
@@ -169,6 +191,9 @@ uartgetc(void)
   }
 }
 
+/**
+ * 处理uart中断的函数,由devintr函数调用
+ */
 // handle a uart interrupt, raised because input has
 // arrived, or the uart is ready for more output, or
 // both. called from devintr().
@@ -176,15 +201,21 @@ void
 uartintr(void)
 {
   // read and process incoming characters.
+  // 通过无限循环,尝试从uart接收端读取字符
   while(1){
+    // 读取一个字符
     int c = uartgetc();
     if(c == -1)
+      // 没有字符可读,则退出
       break;
+    // 对于读取到的字符,调用consoleintr函数进行处理,通常包括字符的控制台回显(consputc函数)和别的处理逻辑(consoleread函数)
     consoleintr(c);
   }
 
   // send buffered characters.
   acquire(&uart_tx_lock);
+  // 为什么要在一个接收读取字符里调用发送缓冲区字符????
+  // 发送缓冲区的字符,启动UART设备发送缓冲区中的字符。这通常意味着将缓冲区中的数据串行化并通过UART接口发送出去。
   uartstart();
   release(&uart_tx_lock);
 }

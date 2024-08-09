@@ -102,6 +102,7 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 
+// 系统调用映射数组
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64 (*syscalls[])(void) = {
@@ -132,12 +133,15 @@ void
 syscall(void)
 {
   int num;
+  // 获取当前的进程
   struct proc *p = myproc();
-
+  // 在寄存器a7当中,保存了系统调用号
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
+    // 通过num来查找具体的系统调用,并且调用
+    // 对于返回值,会保存在a0寄存器当中
     p->trapframe->a0 = syscalls[num]();
   } else {
     printf("%d %s: unknown sys call %d\n",

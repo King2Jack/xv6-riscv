@@ -80,10 +80,12 @@ mycpu(void)
 }
 
 // Return the current struct proc *, or zero if none.
+// 返回当前的进程结构体
 struct proc*
 myproc(void)
 {
   push_off();
+  // 获取当前CPU
   struct cpu *c = mycpu();
   struct proc *p = c->proc;
   pop_off();
@@ -241,6 +243,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 // a user program that calls exec("/init")
 // assembled from ../user/initcode.S
 // od -t xC ../user/initcode
+// 初始化代码
 uchar initcode[] = {
   0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
   0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
@@ -252,6 +255,7 @@ uchar initcode[] = {
 };
 
 // Set up first user process.
+// 初始化第一个用户进程
 void
 userinit(void)
 {
@@ -259,22 +263,30 @@ userinit(void)
 
   // 申请分配一个进程
   p = allocproc();
+  // 将分配的进程赋值给initproc,作为初始化进程的引用
   initproc = p;
   
   // allocate one user page and copy initcode's instructions
   // and data into it.
+  // 使用`uvmfirst()`函数在进程的页表`p->pagetable`中分配一页内存，并将`initcode`（初始化代码）的指令和数据拷贝到这一页中。
   uvmfirst(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
 
   // prepare for the very first "return" from kernel to user.
+  // 在进程的陷阱帧`trapframe`中设置用户程序计数器`epc`为0，这是用户程序的起始地址。
   p->trapframe->epc = 0;      // user program counter
+  // 设置用户栈指针`sp`为`PGSIZE`，指向用户栈的顶部。
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
+  // 安全复制进程名字
   safestrcpy(p->name, "initcode", sizeof(p->name));
+  // 设置当前工作目录为根目录
   p->cwd = namei("/");
 
+  // 设置状态为RUNNABLE
   p->state = RUNNABLE;
 
+  // 释放锁
   release(&p->lock);
 }
 
@@ -303,46 +315,59 @@ growproc(int n)
 int
 fork(void)
 {
+  printf("fork\n");
   int i, pid;
+  // 子进程
   struct proc *np;
+  // 获取当前进程
   struct proc *p = myproc();
 
   // Allocate process.
+  // 分配一个进程
   if((np = allocproc()) == 0){
     return -1;
   }
 
   // Copy user memory from parent to child.
+  // 复制父进程的用户内存给子进程,复制失败的话则释放
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+  // 进程的内存大小
   np->sz = p->sz;
 
   // copy saved user registers.
+  // 复制用户寄存器,这样子子进程可以继续执行父进程的代码
   *(np->trapframe) = *(p->trapframe);
 
   // Cause fork to return 0 in the child.
+  // 作为fork调用的返回值
   np->trapframe->a0 = 0;
 
   // increment reference counts on open file descriptors.
+  // 对于打开的文件描述符,增加引用计数,因为也复制到子进程当中了
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
+  // 复制当前工作目录
   np->cwd = idup(p->cwd);
-
+  // 复制进程名称
   safestrcpy(np->name, p->name, sizeof(p->name));
-
+  // 子进程的PID
   pid = np->pid;
 
+  // 释放锁
   release(&np->lock);
 
   acquire(&wait_lock);
+  // 设置父子关系
   np->parent = p;
   release(&wait_lock);
 
   acquire(&np->lock);
+  // 设置状态为可运行
   np->state = RUNNABLE;
   release(&np->lock);
 
@@ -635,6 +660,7 @@ setkilled(struct proc *p)
   release(&p->lock);
 }
 
+// 返回当前进程是否已经被终止
 int
 killed(struct proc *p)
 {

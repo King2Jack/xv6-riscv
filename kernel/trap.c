@@ -29,6 +29,11 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+/**
+ * 函数主要处理来自用户空间的中断、异常以及系统调用。
+ * 它确保了从用户模式到内核模式的正确过渡，处理系统调用，设备中断，以及异常情况。
+ *
+ */
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -38,18 +43,23 @@ usertrap(void)
 {
   int which_dev = 0;
 
+  // 先判断当前是否为用户模式
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
+  // 写入陷阱处理程序的地址
   w_stvec((uint64)kernelvec);
 
+  // 获取当前的进程
   struct proc *p = myproc();
   
   // save user program counter.
+  // 保存当前进程的epc,以便后续恢复
   p->trapframe->epc = r_sepc();
-  
+
+  // 因为系统调用中断
   if(r_scause() == 8){
     // system call
 
@@ -58,42 +68,57 @@ usertrap(void)
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
+    // 为什么这里要将ecp+=4,上面不是刚刚保存用户空间的epc吗???
+    // 这行代码确保了处理器在处理完系统调用后能够正确地返回到用户空间的代码流中,避免重复执行系统调用指令
     p->trapframe->epc += 4;
 
     // an interrupt will change sepc, scause, and sstatus,
     // so enable only now that we're done with those registers.
+    // 开启中断
     intr_on();
 
+    // 调用syscall处理系统调用
     syscall();
   } else if((which_dev = devintr()) != 0){
+    // 设备终端
     // ok
   } else {
+    // 啥都不是,打印错误信息
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    // 杀死进程
     setkilled(p);
   }
 
+  // 检查进程是否已经杀死,是的话退出
   if(killed(p))
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
+  // 如果是定时器中断,调用yield函数放弃处理器给其他进程
   if(which_dev == 2)
     yield();
-
+  // 恢复用户空间的上下文并且返回到用户态执行
   usertrapret();
 }
 
+/**
+ * 让当前的进程从内核态安全地返回用户态
+ */
 //
 // return to user space
 //
 void
 usertrapret(void)
 {
+  // 获取当前进程
   struct proc *p = myproc();
 
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.
+  // 关闭中断
+  // 在返回用户空间之前，中断被禁用以确保在状态转换过程中不会发生意外的中断
   intr_off();
 
   // send syscalls, interrupts, and exceptions to uservec in trampoline.S
@@ -102,9 +127,13 @@ usertrapret(void)
 
   // set up trapframe values that uservec will need when
   // the process next traps into the kernel.
+  // 存储当前内核页表的地址
   p->trapframe->kernel_satp = r_satp();         // kernel page table
+  // 设置当前进程的内核栈顶
   p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
+  // 设置内核态异常处理程序的地址
   p->trapframe->kernel_trap = (uint64)usertrap;
+  // 设置当前CPU的hartid
   p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
 
   // set up the registers that trampoline.S's sret will use
@@ -117,6 +146,9 @@ usertrapret(void)
   w_sstatus(x);
 
   // set S Exception Program Counter to the saved user pc.
+  // 将SEPC设置为保存的用户程序计数器,即用户态的下一条指令地址
+  // 这里之所以要保存,就是因为当处理器执行sret指令从内核态返回用户态的时候
+  // 会从SEPC读取这个值,从而跳转到正确的用户态指令继续执行
   w_sepc(p->trapframe->epc);
 
   // tell trampoline.S the user page table to switch to.
@@ -177,18 +209,23 @@ clockintr()
 int
 devintr()
 {
+  // 获取中断原因
   uint64 scause = r_scause();
 
   if((scause & 0x8000000000000000L) &&
      (scause & 0xff) == 9){
+    // 表示这是一个由PLIC触发的supervisor external interrupt
     // this is a supervisor external interrupt, via PLIC.
 
     // irq indicates which device interrupted.
+    // 获取中断请求号
     int irq = plic_claim();
 
+    // uart中断,就是在控制台输入的时候,就会调这个
     if(irq == UART0_IRQ){
       uartintr();
     } else if(irq == VIRTIO0_IRQ){
+      // 虚拟IO设备中断
       virtio_disk_intr();
     } else if(irq){
       printf("unexpected interrupt irq=%d\n", irq);
@@ -197,24 +234,29 @@ devintr()
     // the PLIC allows each device to raise at most one
     // interrupt at a time; tell the PLIC the device is
     // now allowed to interrupt again.
+    // 允许设备再次中断
     if(irq)
       plic_complete(irq);
 
     return 1;
   } else if(scause == 0x8000000000000001L){
+    // 表示这是一个由机器模式定时器触发的软中断
     // software interrupt from a machine-mode timer interrupt,
     // forwarded by timervec in kernelvec.S.
 
+    // 只有当在CPU0上,才会调用clockintr来处理时钟中断
     if(cpuid() == 0){
       clockintr();
     }
     
     // acknowledge the software interrupt by clearing
     // the SSIP bit in sip.
+    // 清除软件中断标志
     w_sip(r_sip() & ~2);
 
     return 2;
   } else {
+    // 中断未被识别
     return 0;
   }
 }

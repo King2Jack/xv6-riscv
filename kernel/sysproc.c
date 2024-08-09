@@ -24,6 +24,7 @@ sys_getpid(void)
 uint64
 sys_fork(void)
 {
+  printf("sys_fork\n");
   return fork();
 }
 

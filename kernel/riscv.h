@@ -126,6 +126,12 @@ w_mie(uint64 x)
   asm volatile("csrw mie, %0" : : "r" (x));
 }
 
+/**
+ * SEPC寄存器保存了在异常返回时要跳转到的指令地址
+ * 当发生陷阱时，RISC-V会在这里保存程序计数器pc（因为pc会被stvec覆盖）。
+ * sret（从陷阱返回）指令会将sepc复制到pc。内核可以写入sepc来控制sret的去向。
+ * @param x 代表了想要写入到 `SEPC` 寄存器中的地址值
+ */
 // supervisor exception program counter, holds the
 // instruction address to which a return from
 // exception will go.
@@ -173,6 +179,13 @@ w_mideleg(uint64 x)
   asm volatile("csrw mideleg, %0" : : "r" (x));
 }
 
+/**
+ * 内核在这里写入其陷阱处理程序的地址;RISC-V跳转到这里处理陷阱.
+ * STVEC是RISC-V架构中用于指定处理器在遇到异常或中断时跳转到的地址。
+ * 最低位的两位（low two bits）被用来控制异常处理模式（直接模式或向量模式）
+ *
+ * @param x 中断向量基地址的值
+ */
 // Supervisor Trap-Vector Base Address
 // low two bits are mode.
 static inline void 
@@ -238,6 +251,10 @@ w_mscratch(uint64 x)
   asm volatile("csrw mscratch, %0" : : "r" (x));
 }
 
+/**
+ * 该寄存器用于保存Supervisor Trap（中断）的原因
+ * @return
+ */
 // Supervisor Trap Cause
 static inline uint64
 r_scause()

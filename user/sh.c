@@ -68,12 +68,14 @@ runcmd(struct cmd *cmd)
   if(cmd == 0)
     exit(1);
 
+  printf("cmd %d\n", cmd->type);
   switch(cmd->type){
   default:
     panic("runcmd");
 
   case EXEC:
     ecmd = (struct execcmd*)cmd;
+    printf("exec %s\n", ecmd->argv[0]);
     if(ecmd->argv[0] == 0)
       exit(1);
     exec(ecmd->argv[0], ecmd->argv);
@@ -149,6 +151,8 @@ main(void)
   int fd;
 
   // Ensure that three file descriptors are open.
+  // 打开文件描述符,并且确保是至少有3个文件描述符要打开
+  // 分别是0,1,2;代表输入,输出,错误的文件描述符
   while((fd = open("console", O_RDWR)) >= 0){
     if(fd >= 3){
       close(fd);
@@ -157,7 +161,9 @@ main(void)
   }
 
   // Read and run input commands.
+  // 读取和执行输入的命令
   while(getcmd(buf, sizeof(buf)) >= 0){
+    // 如果读取的不是cd命令,就需要新开一个子进程
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n
@@ -165,7 +171,9 @@ main(void)
         fprintf(2, "cannot cd %s\n", buf+3);
       continue;
     }
+    // 新开子进程
     if(fork1() == 0)
+      // 子进程去执行runcmd
       runcmd(parsecmd(buf));
     wait(0);
   }

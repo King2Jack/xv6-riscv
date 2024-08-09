@@ -91,14 +91,19 @@ kvminithart()
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
+  // 判断虚拟地址是否超出最大值
   if(va >= MAXVA)
     panic("walk");
-
+  // 从二级页表开始遍历,在这里只遍历二级和一级页表而已
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
+    // 检查页表有效性
     if(*pte & PTE_V) {
+      // 有效
+      // 更新为指向一级页表的物理内存地址
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
+      // 无效
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
@@ -141,6 +146,16 @@ kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
+//TODO 后续回来要继续看这个函数
+/**
+ * 这个函数不怎么看的明白,搞不懂是怎么做的映射
+ * @param pagetable
+ * @param va
+ * @param size
+ * @param pa
+ * @param perm
+ * @return
+ */
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
@@ -153,14 +168,19 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 
   if(size == 0)
     panic("mappages: size");
-  
+
+  // 首先将va向下取整到最近的页边界
   a = PGROUNDDOWN(va);
+  // 计算last,就是虚拟地址范围内最后一个页的地址
   last = PGROUNDDOWN(va + size - 1);
+  // 无限循环
   for(;;){
+    // 通过walk函数找到对应虚拟地址的页表
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
     if(*pte & PTE_V)
       panic("mappages: remap");
+    // 权限设置
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -210,6 +230,12 @@ uvmcreate()
   return pagetable;
 }
 
+/**
+ * 将用户初始化代码加载到页表的0地址处,用于第一个进程,sz必须要小于一页的大小
+ * @param pagetable 进程页表的指针
+ * @param src 用户初始化代码的地址
+ * @param sz 初始化代码的大小
+ */
 // Load the user initcode into address 0 of pagetable,
 // for the very first process.
 // sz must be less than a page.
@@ -218,11 +244,15 @@ uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
 {
   char *mem;
 
+  // sz大小校验
   if(sz >= PGSIZE)
     panic("uvmfirst: more than a page");
+  // 从内核的物理内存当中分配一页大小的内存
   mem = kalloc();
+  // 调用`memset`将分配的内存块清零，确保未使用的内存区域不会包含任何敏感信息。
   memset(mem, 0, PGSIZE);
   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
+  // 将src中的前sz个字节,全部复制到分配的物理内存当中,完成初始化代码的加载
   memmove(mem, src, sz);
 }
 
@@ -302,6 +332,13 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
+/**
+ * 将父进程的页表复制到子进程当中,包括页表和物理内存
+ * @param old 父进程页表
+ * @param new 子进程页表
+ * @param sz 需要复制的字节数
+ * @return
+ */
 // Given a parent process's page table, copy
 // its memory into a child's page table.
 // Copies both the page table and the
@@ -316,16 +353,25 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uint flags;
   char *mem;
 
+  // 循环遍历需要复制的区域,PGSIZE是4KB
   for(i = 0; i < sz; i += PGSIZE){
+    // 获取页表项
     if((pte = walk(old, i, 0)) == 0)
+      // 不存在则报panic
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
+      // 页表项无效
       panic("uvmcopy: page not present");
+    // 获取物理地址
     pa = PTE2PA(*pte);
+    // 获取页表项标志
     flags = PTE_FLAGS(*pte);
+    // 内存分配
     if((mem = kalloc()) == 0)
       goto err;
+    // 内存复制
     memmove(mem, (char*)pa, PGSIZE);
+    // 页映射
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
       kfree(mem);
       goto err;
@@ -334,6 +380,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return 0;
 
  err:
+  // 清理已经映射但未完成复制的内存页
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }

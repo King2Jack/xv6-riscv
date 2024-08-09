@@ -68,6 +68,10 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
+/**
+ * 分配一个4096字节大小的物理内存页,返回一个内核可以使用的指针
+ * @return
+ */
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -75,14 +79,17 @@ void *
 kalloc(void)
 {
   struct run *r;
-
+  // 获取锁
   acquire(&kmem.lock);
+  // 从空闲列表当中获取
   r = kmem.freelist;
   if(r)
     kmem.freelist = r->next;
+  // 释放锁
   release(&kmem.lock);
 
   if(r)
+    // 函数会调用`memset`函数将新分配的内存块填充为特定值（这里是5）,这通常是为了防止敏感信息泄露,同时也可以帮助检测未初始化的内存使用
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
